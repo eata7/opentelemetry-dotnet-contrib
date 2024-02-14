@@ -14,6 +14,7 @@
 // limitations under the License.
 // </copyright>
 
+using System;
 using System.Diagnostics.Tracing;
 using System.Linq;
 using System.Threading;
@@ -29,7 +30,7 @@ namespace OpenTelemetry.Exporter.OpenTelemetryProtocol.Etw.Implementation.Export
 [EventSource(Name = "OpenTelemetryOtlpMetricExporter", Guid = "{edc24920-e004-40f6-a8e1-0e6e48f39d84}")]
 internal sealed class OtlpEtwMetricsExportClient : BaseOtlpEtwExportClient<OtlpCollector.ExportMetricsServiceRequest>
 {
-    private const int OtlpMetricEventId = 80;
+    private const int OtlpMetricEventId = 81;
     private readonly int _maxEtwEventSize;
 
     public OtlpEtwMetricsExportClient(OtlpEtwExporterOptions options)
@@ -70,12 +71,12 @@ internal sealed class OtlpEtwMetricsExportClient : BaseOtlpEtwExportClient<OtlpC
                 }
             }
 
-            this.WriteEvent(OtlpMetricEventId, partialRequest.ToByteArray());
+            this.WriteEvent(partialRequest.ToByteArray());
             partialRequest.Return();
         }
         else
         {
-            this.WriteEvent(OtlpMetricEventId, request.ToByteArray());
+            this.WriteEvent(request.ToByteArray());
         }
 
         return true;
@@ -97,6 +98,24 @@ internal sealed class OtlpEtwMetricsExportClient : BaseOtlpEtwExportClient<OtlpC
         var partialScopeMetrics = MetricItemExtensions.GetMetricListFromPool(scopeMetrics.Scope.Name, scopeMetrics.Scope.Version);
         partialResourceMetrics.ScopeMetrics.Add(partialScopeMetrics);
         return partialScopeMetrics;
+    }
+
+    private unsafe void WriteEvent(byte[] data)
+    {
+        if (this.IsEnabled())
+        {
+            EventData* descr = stackalloc EventData[1];
+            if (data != null && data.Length != 0)
+            {
+                int blobSize = data.Length;
+                fixed (byte* blob = &data[0])
+                {
+                    descr[0].DataPointer = (IntPtr)blob;
+                    descr[0].Size = blobSize;
+                    this.WriteEventCore(OtlpMetricEventId, 1, descr);
+                }
+            }
+        }
     }
 
     // Though not used, these event definitions are required so event source base has the metadata for the IDs
